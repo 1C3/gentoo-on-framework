@@ -95,7 +95,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 - edit **package.use** with necessary flags, allow rust package to use system llvm:
   ```
   rm -r /etc/portage/package.use/
-  cat <<EOF >> /etc/portage/package.use
+  cat <<EOF > /etc/portage/package.use
   sys-apps/systemd cryptsetup boot tpm
   sys-kernel/installkernel dracut uki
   dev-lang/rust system-llvm
@@ -107,7 +107,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 - edit **package.accept_keywords** to allow kernel and plasma testing packages:
   ```
   rm -r /etc/portage/package.accept_keywords/
-  cat <<EOF >> /etc/portage/package.accept_keywords
+  cat <<EOF > /etc/portage/package.accept_keywords
   virtual/dist-kernel ~amd64
   sys-kernel/gentoo-kernel-bin ~amd64
   kde-plasma/* ~amd64
@@ -146,13 +146,13 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   # built this stage.
   # Please consult /usr/share/portage/config/make.conf.example for a more
   # detailed example.
-  COMMON_FLAGS="-march=meteorlake -Os -flto -pipe"
+  COMMON_FLAGS="-march=meteorlake -O2 -falign-functions=32:24:16:12 -falign-loops=32:24:16:12 -fno-semantic-interposition -flto -pipe"
   CFLAGS="${COMMON_FLAGS}"
   CXXFLAGS="${COMMON_FLAGS}"
   FCFLAGS="${COMMON_FLAGS}"
   FFLAGS="${COMMON_FLAGS}"
   GOAMD64="v3"
-  RUSTFLAGS="-C target-cpu=meteorlake -C opt-level=s"
+  RUSTFLAGS="-C target-cpu=meteorlake -C opt-level=2 -C lto=thin"
   CPU_FLAGS_X86="aes avx avx2 f16c fma3 mmx mmxext pclmul popcnt rdrand sha sse sse2 sse3 sse4_1 sse4_2 ssse3 vpclmulqdq"
   
   # NOTE: This stage was built with the bindist USE flag enabled
@@ -162,6 +162,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   LC_MESSAGES=C.utf8
   LLVM_TARGETS="X86 AMDGPU"
   VIDEO_CARDS="intel"
+  USE="lto"
   EOF
   ```
 
