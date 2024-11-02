@@ -111,6 +111,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   virtual/dist-kernel ~amd64
   sys-kernel/gentoo-kernel-bin ~amd64
   kde-plasma/* ~amd64
+  kde-frameworks/* ~amd64
   EOF
   ```
 
