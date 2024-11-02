@@ -163,7 +163,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   ACCEPT_LICENSE="*"
   LLVM_TARGETS="X86 AMDGPU"
   VIDEO_CARDS="intel"
-  USE="lto"
+  USE="lto -gtk"
   EOF
   ```
 
@@ -172,9 +172,9 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   emerge-webrsync
   getuto
   
-  eselect profile list && eselect profile set <PROFILE NUMBER> && source /etc/profile
+  eselect profile set default/linux/amd64/23.0/desktop/plasma/systemd && source /etc/profile
   
-  emerge -q1 llvm clang rust
+  emerge -q1 gcc llvm clang rust
   emerge -quDN @world gentoo-kernel-bin linux-firmware sbctl efibootmgr tpm2-tools pam_mount intel-microcode
   ```
 
