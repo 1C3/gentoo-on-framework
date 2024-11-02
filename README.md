@@ -12,6 +12,8 @@
 
 ### disk setup
 
+- change nvme disk sector size if possibile (https://wiki.archlinux.org/title/Advanced_Format#NVMe_solid_state_drives)
+
 - use whatever partitioning tool you prefer to:
   - format the disk as GPT
   - create 1GB efi partition
@@ -30,23 +32,21 @@
 
 - format and open root partition luks device (the password used here will only be used as recovery password once tpm is set up):
   ```
-  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --iter-time 1000 /dev/nvme0n1p2
-  cryptsetup luksOpen /dev/nvme0n1p2 root
-  cryptsetup refresh --allow-discards --persistent /dev/mapper/root
+  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 12 --iter-time 200 /dev/nvme0n1p2
+  cryptsetup luksOpen --allow-discards --persistent /dev/nvme0n1p2 root
   ```
 
 - format and open user home luks device (use desired user login password here):
   ```
-  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --iter-time 1000 /dev/nvme0n1p3
-  cryptsetup luksOpen /dev/nvme0n1p3 <USER>
-  cryptsetup refresh --allow-discards --persistent /dev/mapper/<USER>
+  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 12 --iter-time 200 /dev/nvme0n1p3
+  cryptsetup luksOpen --allow-discards --persistent /dev/nvme0n1p3 <USER>
   ```
 
 - format filesystems:
   ```
   mkfs.vfat -F32 -n ESP /dev/nvme0n1p1
   mkfs.ext4 -L ROOT -O fast_commit /dev/mapper/root
-  mkfs.ext4 -L USERHOME -O fast_commit /dev/mapper/<USER>
+  mkfs.ext4 -L <USER> -O fast_commit /dev/mapper/<USER>
   ```
 
 - mount partitions:
