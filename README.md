@@ -160,6 +160,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   # This sets the language of build output to English.
   # Please keep this setting intact when reporting bugs.
   LC_MESSAGES=C.utf8
+  ACCEPT_LICENSE="*"
   LLVM_TARGETS="X86 AMDGPU"
   VIDEO_CARDS="intel"
   USE="lto"
