@@ -147,13 +147,13 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   # built this stage.
   # Please consult /usr/share/portage/config/make.conf.example for a more
   # detailed example.
-  COMMON_FLAGS="-march=meteorlake -O2 -falign-functions=32:24:16:12 -falign-loops=32:24:16:12 -fno-semantic-interposition -flto -pipe"
+  COMMON_FLAGS="-march=meteorlake -O2 -pipe"
   CFLAGS="${COMMON_FLAGS}"
   CXXFLAGS="${COMMON_FLAGS}"
   FCFLAGS="${COMMON_FLAGS}"
   FFLAGS="${COMMON_FLAGS}"
   GOAMD64="v3"
-  RUSTFLAGS="-C target-cpu=meteorlake -C opt-level=2 -C lto=thin"
+  RUSTFLAGS="-C target-cpu=meteorlake -C opt-level=2"
   CPU_FLAGS_X86="aes avx avx2 f16c fma3 mmx mmxext pclmul popcnt rdrand sha sse sse2 sse3 sse4_1 sse4_2 ssse3 vpclmulqdq"
   
   # NOTE: This stage was built with the bindist USE flag enabled
@@ -176,10 +176,53 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   eselect profile set default/linux/amd64/23.0/desktop/plasma/systemd && source /etc/profile
   
   emerge -q1 gcc llvm clang rust
-  emerge -quDN @world gentoo-kernel-bin linux-firmware sbctl efibootmgr tpm2-tools pam_mount intel-microcode
+  emerge -quDN @world gentoo-kernel-bin linux-firmware sbctl efibootmgr tpm2-tools pam_mount intel-microcode plasma-desktop alacritty 
+  ```
+
+- setup systemd:
+  ```
+  systemd-machine-id-setup
+  systemd-firstboot --prompt
   ```
 
 - set root passwd:
   ```
   passwd
   ```
+
+### kernel install
+
+- edit /etc/dracut.conf to ensure crypto modules are included in initramfs, and kernel cmdline is properly set by adding:
+```
+LUKS_ID=$( blkid | grep /dev/nvme0n1p2 | sed -r 's/.* UUID="(\S*)".*/\1/' )
+ROOT_ID=$( blkid | grep /dev/mapper/root | sed -r 's/.* UUID="(\S*)".*/\1/' )
+ESP_ID=$( blkid | grep /dev/nvme0n1p1 | sed -r 's/.* UUID="(\S*)".*/\1/' )
+
+cat <<EOF > /etc/dracut.conf
+add_dracutmodules+=" crypt tpm2-tss "
+kernel_cmdline="root=UUID=$ROOT_ID rd.luks.uuid=$LUKS_ID"
+use_fstab="yes"
+early_microcode="yes"
+EOF
+```
+
+- populate **/etc/fstab**:
+```
+cat <<EOF >> /etc/fstab
+UUID=$ROOT_ID /     ext4  defaults,noatime,discard  0 1
+UUID=$ESP_ID  /efi  vfat  defaults,noatime          0 2
+EOF
+```
+
+- use sbctl to generate and enroll uefi signing keys:
+```
+sbctl status
+sbctl create-keys
+sbctl enroll-keys --yes-this-might-brick-my-machine
+sbctl status
+```
+
+- rebuild dracut initramfs and UKI by reinstalling gentoo-kernel-bin:
+```
+emerge --config gentoo-kernel-bin
+```
