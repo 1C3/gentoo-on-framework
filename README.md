@@ -22,9 +22,9 @@
     blkdiscard -f /dev/nvme0n1 # clears and trims whole ssd
     parted /dev/nvme0n1 --script \
     mklabel gpt \
-    mkpart primary 0% 1GB \
+    mkpart primary 0% 1GiB \
     set 1 esp on \
-    mkpart primary 1GB 51GB \
+    mkpart primary 1GiB 51GiB \
     mkpart primary 51GiB 100%
     ```
 
