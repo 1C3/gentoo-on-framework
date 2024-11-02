@@ -142,7 +142,26 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 - add build options to make.conf:
   ```
   cat <<EOF > /etc/portage/make.conf
+  # These settings were set by the catalyst build script that automatically
+  # built this stage.
+  # Please consult /usr/share/portage/config/make.conf.example for a more
+  # detailed example.
+  COMMON_FLAGS="-march=meteorlake -Os -flto -pipe"
+  CFLAGS="${COMMON_FLAGS}"
+  CXXFLAGS="${COMMON_FLAGS}"
+  FCFLAGS="${COMMON_FLAGS}"
+  FFLAGS="${COMMON_FLAGS}"
+  GOAMD64="v3"
+  RUSTFLAGS="-C target-cpu=meteorlake -C opt-level=s"
+  CPU_FLAGS_X86="aes avx avx2 f16c fma3 mmx mmxext pclmul popcnt rdrand sha sse sse2 sse3 sse4_1 sse4_2 ssse3 vpclmulqdq"
   
+  # NOTE: This stage was built with the bindist USE flag enabled
+  
+  # This sets the language of build output to English.
+  # Please keep this setting intact when reporting bugs.
+  LC_MESSAGES=C.utf8
+  LLVM_TARGETS="X86 AMDGPU"
+  VIDEO_CARDS="intel"
   EOF
   ```
 
@@ -153,7 +172,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   
   eselect profile list && eselect profile set <PROFILE NUMBER> && source /etc/profile
   
-  emerge -q1 sys-devel/llvm dev-lang/rust
+  emerge -q1 llvm clang rust
   emerge -quDN @world gentoo-kernel-bin linux-firmware sbctl efibootmgr tpm2-tools pam_mount intel-microcode
   ```
 
