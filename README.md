@@ -194,53 +194,105 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 ### kernel install
 
 - edit /etc/dracut.conf to ensure crypto modules are included in initramfs, and kernel cmdline is properly set by adding:
-```
-LUKS_ID=$( blkid | grep /dev/nvme0n1p2 | sed -r 's/.* UUID="(\S*)".*/\1/' )
-ROOT_ID=$( blkid | grep /dev/mapper/root | sed -r 's/.* UUID="(\S*)".*/\1/' )
-ESP_ID=$( blkid | grep /dev/nvme0n1p1 | sed -r 's/.* UUID="(\S*)".*/\1/' )
-
-cat <<EOF > /etc/dracut.conf
-add_dracutmodules+=" crypt tpm2-tss "
-kernel_cmdline="root=UUID=$ROOT_ID rd.luks.uuid=$LUKS_ID"
-use_fstab="yes"
-early_microcode="yes"
-EOF
-```
+  ```
+  LUKS_ID=$( blkid | grep /dev/nvme0n1p2 | sed -r 's/.* UUID="(\S*)".*/\1/' )
+  ROOT_ID=$( blkid | grep /dev/mapper/root | sed -r 's/.* UUID="(\S*)".*/\1/' )
+  ESP_ID=$( blkid | grep /dev/nvme0n1p1 | sed -r 's/.* UUID="(\S*)".*/\1/' )
+  
+  cat <<EOF > /etc/dracut.conf
+  add_dracutmodules+=" crypt tpm2-tss "
+  kernel_cmdline="root=UUID=$ROOT_ID rd.luks.uuid=$LUKS_ID"
+  use_fstab="yes"
+  early_microcode="yes"
+  EOF
+  ```
 
 - populate **/etc/fstab**:
-```
-cat <<EOF >> /etc/fstab
-UUID=$ROOT_ID /     ext4  defaults,noatime,discard  0 1
-UUID=$ESP_ID  /efi  vfat  defaults,noatime          0 2
-EOF
-```
+  ```
+  cat <<EOF >> /etc/fstab
+  UUID=$ROOT_ID /     ext4  defaults,noatime,discard  0 1
+  UUID=$ESP_ID  /efi  vfat  defaults,noatime          0 2
+  EOF
+  ```
 
 - use sbctl to generate and enroll uefi signing keys:
-```
-sbctl status
-sbctl create-keys
-sbctl enroll-keys --yes-this-might-brick-my-machine
-sbctl status
-```
+  ```
+  sbctl status
+  sbctl create-keys
+  sbctl enroll-keys --yes-this-might-brick-my-machine
+  sbctl status
+  ```
 
 - rebuild dracut initramfs and UKI by reinstalling gentoo-kernel-bin:
-```
-emerge --config gentoo-kernel-bin
-```
+  ```
+  emerge --config gentoo-kernel-bin
+  ```
+
+- update efi boot entries (I use this very simple script):
+  ```
+  cat <<EOF > /boot/kupdate.sh
+  #!/bin/bash
+  
+  for i in \$(efibootmgr | grep -E -o "^Boot[0-9]{4}" | cut -c 5-8);
+      do efibootmgr -b \$i -B -q;
+  done
+  efibootmgr -O -q
+  
+  UKI_PRIMARY=\$( ls -t1 /efi/EFI/Linux/ | head -n1 )
+  UKI_SECONDARY=\$( ls -t1 /efi/EFI/Linux/ | head -n2 | tail -n1 )
+
+  mkdir -p /efi/EFI/BOOT
+  cp /efi/EFI/Linux/${UKI_PRIMARY} /efi/EFI/BOOT/BOOTX64.efi
+  
+  efibootmgr --create --disk /dev/sda --label "Gentoo Primary EFI Stub UKI" --loader "\EFI\Linux\\\\\${UKI_PRIMARY}" -q
+  efibootmgr --create --disk /dev/sda --label "Gentoo Secondary EFI Stub UKI" --loader "\EFI\Linux\\\\\${UKI_SECONDARY}" -q
+  efibootmgr -o 0000,0001
+  EOF
+  
+  chmod 700 /boot/kupdate.sh
+  . /boot/kupdate.sh
+  ```
 
 ### encrypted home directory
 
-- add user: `useradd -m -G users,wheel,plugdev,pipewire -s /bin/bash <USER> && passwd <USER>`
+- add user:
+  ```
+  useradd -G users,wheel,plugdev,pipewire -s /bin/bash <USER>
+  cp -r /etc/skel/.* /home/<USER>
+  chmod -R 700 /home/<USER>
+  passwd <USER>
+  ```
 
 - add the volume line inside the pam_mount tag in **/etc/security/pam_mount.conf.xml**:
-```
-<pam_mount>
-  ...
-  <volume user="<USER>" fstype="crypt" path="/dev/sda3" mountpoint="/home/<USER> " option="fsck" />
-  ...
-</pam_mount>
-```
+  ```
+  <pam_mount>
+    ...
+    <volume user="<USER>" fstype="crypt" path="/dev/nvme0n1p3" mountpoint="/home/<USER>" option="fsck" />
+    ...
+  </pam_mount>
+  ```
 
-- in file **/etc/pam.d/system-login**, add `auth optional pam_mount.so` at the end of the auth section, and `session optional pam_mount.so` at the end of the session section
+- in file **/etc/pam.d/system-login**, add `auth optional pam_mount.so` at the end of the auth section, and `session optional pam_mount.so` right after **system-auth** in the session section
 
 - reboot
+
+### after reboot
+
+- setup tpm2 key for LUKS unlocking:
+  ```
+  systemd-cryptenroll --tpm2-device=list
+  systemd-cryptenroll --tpm2-device=/dev/tpmrm0 --tpm2-pcrs=0+2+7 /dev/sda2
+  ```
+
+- update /etc/dracut.conf to ensure crypto modules are included in initramfs, and kernel cmdline is properly set by adding:
+  ```
+  LUKS_ID=$( blkid | grep /dev/nvme0n1p2 | sed -r 's/.* UUID="(\S*)".*/\1/' )
+  ROOT_ID=$( blkid | grep LABEL=\"ROOT\" | sed -r 's/.* UUID="(\S*)".*/\1/' )
+  
+  sed -i "s/^kernel_cmdline=.*$/kernel_cmdline=\"root=UUID=$ROOT_ID rd.luks.uuid=$LUKS_ID rd.luks.options=$LUKS_ID=tpm2-device=auto fsck.mode=force fsck.repair=yes\"/" /etc/dracut.conf
+  
+  emerge --config gentoo-kernel-bin
+  . /boot/kupdate.sh
+  ```
+
+- if reboots are working ok, remove ability for dracut to drop to root shell in case of failed boot by adding `panic=0` to cmdline
