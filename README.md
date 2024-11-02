@@ -176,13 +176,14 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   eselect profile set default/linux/amd64/23.0/desktop/plasma/systemd && source /etc/profile
   
   emerge -q1 gcc llvm clang rust
-  emerge -quDN @world gentoo-kernel-bin linux-firmware sbctl efibootmgr tpm2-tools pam_mount intel-microcode plasma-desktop alacritty 
+  emerge -quDN @world gentoo-kernel-bin linux-firmware sbctl efibootmgr tpm2-tools pam_mount intel-microcode plasma-desktop plasma-nm alacritty 
   ```
 
 - setup systemd:
   ```
   systemd-machine-id-setup
   systemd-firstboot --prompt
+  systemctl enable NetworkManager
   ```
 
 - set root passwd:
@@ -226,3 +227,20 @@ sbctl status
 ```
 emerge --config gentoo-kernel-bin
 ```
+
+### encrypted home directory
+
+- add user: `useradd -m -G users,wheel,plugdev,pipewire -s /bin/bash <USER> && passwd <USER>`
+
+- add the volume line inside the pam_mount tag in **/etc/security/pam_mount.conf.xml**:
+```
+<pam_mount>
+  ...
+  <volume user="<USER>" fstype="crypt" path="/dev/sda3" mountpoint="/home/<USER> " option="fsck" />
+  ...
+</pam_mount>
+```
+
+- in file **/etc/pam.d/system-login**, add `auth optional pam_mount.so` at the end of the auth section, and `session optional pam_mount.so` at the end of the session section
+
+- reboot
