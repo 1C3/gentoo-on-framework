@@ -32,13 +32,13 @@
 
 - format and open root partition luks device (the password used here will only be used as recovery password once tpm is set up):
   ```
-  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 12 --iter-time 200 /dev/nvme0n1p2
+  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 12 --iter-time 200 --verify-passphrase no /dev/nvme0n1p2
   cryptsetup luksOpen --allow-discards --persistent /dev/nvme0n1p2 root
   ```
 
 - format and open user home luks device (use desired user login password here):
   ```
-  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 12 --iter-time 200 /dev/nvme0n1p3
+  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 12 --iter-time 200 --verify-passphrase no /dev/nvme0n1p3
   cryptsetup luksOpen --allow-discards --persistent /dev/nvme0n1p3 <USER>
   ```
 
@@ -54,7 +54,7 @@
   mkdir /mnt/gentoo
   mount /dev/mapper/root /mnt/gentoo
   mkdir /mnt/gentoo/efi
-  mount /dev/sda1 /mnt/gentoo/efi
+  mount /dev/nvme0n1p1 /mnt/gentoo/efi
   mkdir -p /mnt/gentoo/home/<USER>
   mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   ```
