@@ -37,13 +37,13 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 
 - format and open root partition luks device (the password used here will only be used as recovery password once tpm is set up):
   ```
-  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 12 --iter-time 200 --verify-passphrase no /dev/nvme0n1p2
+  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 16 --iter-time 200 --verify-passphrase no /dev/nvme0n1p2
   cryptsetup luksOpen --allow-discards --persistent /dev/nvme0n1p2 root
   ```
 
 - format and open user home luks device (use desired user login password here):
   ```
-  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 12 --iter-time 200 --verify-passphrase no /dev/nvme0n1p3
+  cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 16 --iter-time 200 --verify-passphrase no /dev/nvme0n1p3
   cryptsetup luksOpen --allow-discards --persistent /dev/nvme0n1p3 <USER>
   ```
 
@@ -164,7 +164,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   ACCEPT_LICENSE="*"
   LLVM_TARGETS="X86 AMDGPU"
   VIDEO_CARDS="intel"
-  USE="lto -gtk"
+  USE="lto flatpak bash-completion -gtk -gtk-doc"
   EOF
   ```
 
@@ -176,7 +176,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   eselect profile set default/linux/amd64/23.0/desktop/plasma/systemd && source /etc/profile
   
   emerge -q1 gcc llvm clang rust
-  emerge -quDN @world gentoo-kernel-bin linux-firmware sbctl efibootmgr tpm2-tools pam_mount intel-microcode plasma-desktop plasma-nm alacritty 
+  emerge -quDN @world gentoo-kernel-bin linux-firmware sbctl efibootmgr tpm2-tools pam_mount intel-microcode plasma-desktop plasma-nm plasma-pa bluedevil powerdevil system-settings alacritty 
   ```
 
 - setup systemd:
@@ -244,8 +244,8 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   mkdir -p /efi/EFI/BOOT
   cp /efi/EFI/Linux/${UKI_PRIMARY} /efi/EFI/BOOT/BOOTX64.efi
   
-  efibootmgr --create --disk /dev/sda --label "Gentoo Primary EFI Stub UKI" --loader "\EFI\Linux\\\\\${UKI_PRIMARY}" -q
-  efibootmgr --create --disk /dev/sda --label "Gentoo Secondary EFI Stub UKI" --loader "\EFI\Linux\\\\\${UKI_SECONDARY}" -q
+  efibootmgr --create --disk /dev/nvme0n1 --label "Gentoo Primary EFI Stub UKI" --loader "\EFI\Linux\\\\\${UKI_PRIMARY}" -q
+  efibootmgr --create --disk /dev/nvme0n1 --label "Gentoo Secondary EFI Stub UKI" --loader "\EFI\Linux\\\\\${UKI_SECONDARY}" -q
   efibootmgr -o 0000,0001
   EOF
   
@@ -274,9 +274,13 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 
 - in file **/etc/pam.d/system-login**, add `auth optional pam_mount.so` at the end of the auth section, and `session optional pam_mount.so` right after **system-auth** in the session section
 
-- reboot
+- reboot into bios and re-enable secure boot
 
 ### after reboot
+
+- use recovery password to unlock root partition
+
+- login into user account and start kde with `startplasma-wayland`
 
 - setup tpm2 key for LUKS unlocking:
   ```
@@ -296,3 +300,24 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   ```
 
 - if reboots are working ok, remove ability for dracut to drop to root shell in case of failed boot by adding `panic=0` to cmdline
+
+### display manager-less setup
+
+- configure plasma to start automatically when logging in from tty 1, by adding this to your .bashrc:
+  ```
+  if [[ $(tty) == "/dev/tty1" ]]; then
+      dbus-run-session startplasma-wayland
+  fi
+  ```
+  
+- have tty1 automatically try to login your user and ask for password on boot:
+  ```
+  mkdir -p /etc/systemd/system/getty@tty1.service.d/
+  cat <<EOF > /etc/systemd/system/getty@tty1.service.d/autologin.conf
+  [Service]
+  ExecStart=
+  ExecStart=-/sbin/agetty --autologin username --noclear %I $TERM
+  Type=idle
+  EOF
+  ```
+  should work automatically on next reboot
