@@ -179,11 +179,11 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   emerge -quDN @world gentoo-kernel-bin linux-firmware sbctl efibootmgr tpm2-tools pam_mount intel-microcode plasma-desktop plasma-nm plasma-pa bluedevil powerdevil system-settings alacritty 
   ```
 
-- setup systemd:
+- set locale:
   ```
-  systemd-machine-id-setup
-  systemd-firstboot --prompt
-  systemctl enable NetworkManager
+  echo "it_IT.UTF-8 UTF-8" >> /etc/locale.gen
+  locale-gen
+  echo "LANG=it_IT.UTF8" > /etc/locale.conf
   ```
 
 - set root passwd:
@@ -280,7 +280,20 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 
 - use recovery password to unlock root partition
 
+- setup systemd:
+  ```
+  systemd-machine-id-setup
+  systemd-firstboot --prompt
+  systemctl enable NetworkManager bluetooth
+  hostnamectl set-hostname FRAMEWORK
+  ```
+
 - login into user account and start kde with `startplasma-wayland`
+
+- enable pipewire:
+  ```
+  systemctl --user enable wireplumber pipewire-pulse.socket
+  ```
 
 - setup tpm2 key for LUKS unlocking:
   ```
@@ -316,8 +329,8 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   cat <<EOF > /etc/systemd/system/getty@tty1.service.d/autologin.conf
   [Service]
   ExecStart=
-  ExecStart=-/sbin/agetty --autologin username --noclear %I $TERM
-  Type=idle
+  ExecStart=-/sbin/agetty -o '-p -- <USER>' --noclear --skip-login - $TERM
+  Environment=XDG_SESSION_TYPE=wayland
   EOF
   ```
   should work automatically on next reboot
