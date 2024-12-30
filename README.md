@@ -3,12 +3,7 @@
 - enter bios
 - put secure boot into setup mode:
   - enter Administer Secure Boot
-  - delete all PK, KEK and DB keys (leave DBX)mkdir /mnt/gentoo
-mount /dev/mapper/root /mnt/gentoo
-mkdir /mnt/gentoo/efi
-mount /dev/nvme0n1p1 /mnt/gentoo/efi
-mkdir -p /mnt/gentoo/home/<USER>
-mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
+  - delete all PK, KEK and DB keys (leave DBX)
 - reset TPM
   - enter Setup Utility > Security
   - Trigger Clear TPM switch
@@ -17,7 +12,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 
 ### disk setup
 
-- change nvme disk sector size if possibile (https://wiki.archlinux.org/title/Advanced_Format#NVMe_solid_state_drives)
+- change the ssds reported logical block size to 4KiB if possibile (https://wiki.archlinux.org/title/Advanced_Format#NVMe_solid_state_drives)
 
 - use whatever partitioning tool you prefer to:
   - format the disk as GPT
@@ -26,7 +21,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   - create home partition over remaining space
   - example:
     ```
-    blkdiscard -f /dev/nvme0n1 # clears and trims whole ssd
+    blkdiscard -f /dev/nvme0n1 # erases and trims whole ssd
     parted /dev/nvme0n1 --script \
     mklabel gpt \
     mkpart primary 0% 1GiB \
@@ -38,13 +33,13 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 - format and open root partition luks device (the password used here will only be used as recovery password once tpm is set up):
   ```
   cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 16 --iter-time 200 --verify-passphrase no /dev/nvme0n1p2
-  cryptsetup luksOpen --allow-discards --persistent /dev/nvme0n1p2 root
+  cryptsetup luksOpen --allow-discards --perf-no_write_workqueue --perf-no_read_workqueue --persistent /dev/nvme0n1p2 root
   ```
 
 - format and open user home luks device (use desired user login password here):
   ```
   cryptsetup luksFormat --cipher aes-xts-plain64 --key-size 256 --hash sha512 --pbkdf argon2id --pbkdf-parallel 16 --iter-time 200 --verify-passphrase no /dev/nvme0n1p3
-  cryptsetup luksOpen --allow-discards --persistent /dev/nvme0n1p3 <USER>
+  cryptsetup luksOpen --allow-discards --perf-no_write_workqueue --perf-no_read_workqueue --persistent /dev/nvme0n1p3 <USER>
   ```
 
 - format filesystems:
@@ -69,10 +64,8 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 - download and extract the desired stage tarball from https://www.gentoo.org/downloads/, check checksum and extract the files
   ```
   cd /mnt/gentoo
-  wget https://distfiles.gentoo.org/releases/amd64/autobuilds/20241027T164832Z/stage3-amd64-desktop-systemd-20241027T164832Z.tar.xz
-  wget https://distfiles.gentoo.org/releases/amd64/autobuilds/20241027T164832Z/stage3-amd64-desktop-systemd-20241027T164832Z.tar.xz.DIGESTS
-  sha512sum stage3*.tar.xz
-  cat stage3*.DIGESTS | grep -i -A 1 sha512
+  wget https://distfiles.gentoo.org/releases/amd64/autobuilds/20241027T164832Z/stage3-amd64-desktop-systemd-20241027T164832Z.{tar.xz,tar.xz.DIGESTS}
+  if [[ $(sha512sum stage3*.tar.xz) = $(grep -P -oz 'SHA512 HASH\n\K.*stage3\S+\.tar\.xz[^.]' stage3*.DIGESTS) ]]; then echo 'CHECKSUMS MATCH'; fi
   tar xpvf stage3*.tar.xz --xattrs-include='*.*' --numeric-owner
   ```
 
@@ -92,61 +85,28 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   export PS1="(chroot) ${PS1}"
   ```
 
-- edit **package.use** with necessary flags, allow rust package to use system llvm:
+- edit **package.use** with necessary flags for unified kernels and tpm unlocking on boot:
   ```
   rm -r /etc/portage/package.use/
   cat <<EOF > /etc/portage/package.use
   sys-apps/systemd cryptsetup boot tpm
   sys-kernel/installkernel dracut uki
-  dev-lang/rust system-llvm
   EOF
-  
-  echo 'dev-lang/rust -system-llvm' >> /etc/portage/profile/package.use.mask
   ```
 
-- edit **package.accept_keywords** to allow kernel and plasma testing packages:
+- edit **package.accept_keywords** to allow kernel testing packages:
   ```
   rm -r /etc/portage/package.accept_keywords/
   cat <<EOF > /etc/portage/package.accept_keywords
   virtual/dist-kernel ~amd64
-  sys-kernel/gentoo-kernel-bin ~amd64
-  kde-plasma/* ~amd64
-  kde-frameworks/* ~amd64
-  EOF
-  ```
-
-- allow llvm to be built without support for all targets:
-  ```
-  cat <<EOF > /etc/portage/profile/use.force
-  -llvm_targets_AArch64
-  -llvm_targets_AMDGPU
-  -llvm_targets_ARM
-  -llvm_targets_AVR
-  -llvm_targets_BPF
-  -llvm_targets_Hexagon
-  -llvm_targets_Lanai
-  -llvm_targets_LoongArch
-  -llvm_targets_MSP430
-  -llvm_targets_Mips
-  -llvm_targets_NVPTX
-  -llvm_targets_PowerPC
-  -llvm_targets_RISCV
-  -llvm_targets_Sparc
-  -llvm_targets_SystemZ
-  -llvm_targets_VE
-  -llvm_targets_WebAssembly
-  -llvm_targets_X86
-  -llvm_targets_XCore
+  sys-kernel/gentoo-sources ~amd64
+  sys-kernel/linux-firmware ~amd64
   EOF
   ```
 
 - add build options to make.conf:
   ```
   cat <<EOF > /etc/portage/make.conf
-  # These settings were set by the catalyst build script that automatically
-  # built this stage.
-  # Please consult /usr/share/portage/config/make.conf.example for a more
-  # detailed example.
   COMMON_FLAGS="-march=meteorlake -O2 -pipe"
   CFLAGS="${COMMON_FLAGS}"
   CXXFLAGS="${COMMON_FLAGS}"
@@ -156,15 +116,12 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   RUSTFLAGS="-C target-cpu=meteorlake -C opt-level=2"
   CPU_FLAGS_X86="aes avx avx2 f16c fma3 mmx mmxext pclmul popcnt rdrand sha sse sse2 sse3 sse4_1 sse4_2 ssse3 vpclmulqdq"
   
-  # NOTE: This stage was built with the bindist USE flag enabled
-  
-  # This sets the language of build output to English.
-  # Please keep this setting intact when reporting bugs.
+  MAKEOPTS="-j18" # number of threads on a Core Ultra 5 125H
+  FEATURES="getbinpkg binpkg-request-signature"
+
   LC_MESSAGES=C.utf8
   ACCEPT_LICENSE="*"
-  LLVM_TARGETS="X86 AMDGPU"
-  VIDEO_CARDS="intel"
-  USE="lto flatpak bash-completion -gtk -gtk-doc"
+  VIDEO_CARDS="intel
   EOF
   ```
 
@@ -172,11 +129,7 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   ```
   emerge-webrsync
   getuto
-  
-  eselect profile set default/linux/amd64/23.0/desktop/plasma/systemd && source /etc/profile
-  
-  emerge -q1 gcc llvm clang rust
-  emerge -quDN @world gentoo-kernel-bin linux-firmware sbctl efibootmgr tpm2-tools pam_mount intel-microcode plasma-desktop plasma-nm plasma-pa bluedevil powerdevil system-settings alacritty 
+  emerge -quDN @world gentoo-sources linux-firmware sbctl efibootmgr pam_mount intel-microcode
   ```
 
 - set locale:
@@ -200,9 +153,8 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   ESP_ID=$( blkid | grep /dev/nvme0n1p1 | sed -r 's/.* UUID="(\S*)".*/\1/' )
   
   cat <<EOF > /etc/dracut.conf
-  add_dracutmodules+=" crypt tpm2-tss "
-  kernel_cmdline="root=UUID=$ROOT_ID rd.luks.uuid=$LUKS_ID"
-  use_fstab="yes"
+  kernel_cmdline="root=UUID=$ROOT_ID rd.luks.uuid=$LUKS_ID rd.luks.options=$LUKS_ID=tpm2-device=auto fsck.mode=force fsck.repair=yes loglevel=3"
+  add_dracutmodules+=" systemd-cryptsetup tpm2-tss "
   early_microcode="yes"
   EOF
   ```
@@ -223,29 +175,35 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   sbctl status
   ```
 
-- rebuild dracut initramfs and UKI by reinstalling gentoo-kernel-bin:
+- build and install kernel (will also generate the uki thanks to installkernel **uki** use flag):
   ```
-  emerge --config gentoo-kernel-bin
+  cp framework_core_ultra_6.12.7_kconfig /usr/src/linux/
+  cd /usr/src/linux
+  make oldconfig
+  make menuconfig
+  make -j18
+  make modules_install
+  make install
   ```
 
-- update efi boot entries (I use this very simple script):
+- update efi boot entries (I use this script, it clears all efi boot entries, then uses the two most recently modified ukis to create a primary and a secondary boot entry in the efi firmware):
   ```
   cat <<EOF > /boot/kupdate.sh
   #!/bin/bash
-  
-  for i in \$(efibootmgr | grep -E -o "^Boot[0-9]{4}" | cut -c 5-8);
-      do efibootmgr -b \$i -B -q;
+
+  for i in $(efibootmgr | grep -E -o "^Boot[0-9]{4}" | cut -c 5-8);
+      do efibootmgr -b $i -B -q;
   done
   efibootmgr -O -q
-  
-  UKI_PRIMARY=\$( ls -t1 /efi/EFI/Linux/ | head -n1 )
-  UKI_SECONDARY=\$( ls -t1 /efi/EFI/Linux/ | head -n2 | tail -n1 )
+
+  UKI_PRIMARY=$( ls -t1 /efi/EFI/Linux/ | head -n1 )
+  UKI_SECONDARY=$( ls -t1 /efi/EFI/Linux/ | head -n2 | tail -n1 )
 
   mkdir -p /efi/EFI/BOOT
   cp /efi/EFI/Linux/${UKI_PRIMARY} /efi/EFI/BOOT/BOOTX64.efi
-  
-  efibootmgr --create --disk /dev/nvme0n1 --label "Gentoo Primary EFI Stub UKI" --loader "\EFI\Linux\\\\\${UKI_PRIMARY}" -q
-  efibootmgr --create --disk /dev/nvme0n1 --label "Gentoo Secondary EFI Stub UKI" --loader "\EFI\Linux\\\\\${UKI_SECONDARY}" -q
+
+  efibootmgr --create --disk /dev/nvme0n1 --label "Gentoo Primary EFI Stub UKI" --loader "\EFI\Linux\\${UKI_PRIMARY}" -q
+  efibootmgr --create --disk /dev/nvme0n1 --label "Gentoo Secondary EFI Stub UKI" --loader "\EFI\Linux\\${UKI_SECONDARY}" -q
   efibootmgr -o 0000,0001
   EOF
   
@@ -255,10 +213,11 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
 
 ### encrypted home directory
 
-- add user:
+- add user (password must be the same used to create the luks volume):
   ```
-  useradd -G users,wheel,plugdev,pipewire -s /bin/bash <USER>
+  useradd -G users,wheel -s /bin/bash <USER>
   cp -r /etc/skel/.* /home/<USER>
+  chown -R <USER>:<USER> /home/<USER>
   chmod -R 700 /home/<USER>
   passwd <USER>
   ```
@@ -267,70 +226,35 @@ mount /dev/mapper/riccardo /mnt/gentoo/home/<USER>
   ```
   <pam_mount>
     ...
-    <volume user="<USER>" fstype="crypt" path="/dev/nvme0n1p3" mountpoint="/home/<USER>" option="fsck" />
+    <volume user="<USER>" fstype="crypt" path="/dev/nvme0n1p3" mountpoint="~" options="fsck,noatime,discard" />
     ...
   </pam_mount>
   ```
 
-- in file **/etc/pam.d/system-login**, add `auth optional pam_mount.so` at the end of the auth section, and `session optional pam_mount.so` right after **system-auth** in the session section
+- in file **/etc/pam.d/system-login**, add
+  - `auth optional pam_mount.so` at the end of the auth section
+  - `password	include pam_mount.so` at the end of the password section
+  - `session optional pam_mount.so` right after **system-auth** in the session section
 
 - reboot into bios and re-enable secure boot
 
 ### after reboot
 
-- use recovery password to unlock root partition
+- use recovery password to unlock root partition for the first boot, since the tpm doesn't hold the secret yet
 
 - setup systemd:
   ```
   systemd-machine-id-setup
   systemd-firstboot --prompt
-  systemctl enable NetworkManager bluetooth
   hostnamectl set-hostname FRAMEWORK
   ```
 
-- login into user account and start kde with `startplasma-wayland`
+- login into user account to verify home directory auto-unlocking is working
 
-- enable pipewire:
-  ```
-  systemctl --user enable wireplumber pipewire-pulse.socket
-  ```
-
-- setup tpm2 key for LUKS unlocking:
+- setup tpm2 key for auto unlocking of root partition:
   ```
   systemd-cryptenroll --tpm2-device=list
-  systemd-cryptenroll --tpm2-device=/dev/tpmrm0 --tpm2-pcrs=0+2+7 /dev/sda2
+  systemd-cryptenroll --tpm2-device=/dev/tpmrm0 --tpm2-pcrs=0+2+7 /dev/nvme0n1p2
   ```
 
-- update /etc/dracut.conf to ensure crypto modules are included in initramfs, and kernel cmdline is properly set by adding:
-  ```
-  LUKS_ID=$( blkid | grep /dev/nvme0n1p2 | sed -r 's/.* UUID="(\S*)".*/\1/' )
-  ROOT_ID=$( blkid | grep LABEL=\"ROOT\" | sed -r 's/.* UUID="(\S*)".*/\1/' )
-  
-  sed -i "s/^kernel_cmdline=.*$/kernel_cmdline=\"root=UUID=$ROOT_ID rd.luks.uuid=$LUKS_ID rd.luks.options=$LUKS_ID=tpm2-device=auto fsck.mode=force fsck.repair=yes\"/" /etc/dracut.conf
-  
-  emerge --config gentoo-kernel-bin
-  . /boot/kupdate.sh
-  ```
-
-- if reboots are working ok, remove ability for dracut to drop to root shell in case of failed boot by adding `panic=0` to cmdline
-
-### display manager-less setup
-
-- configure plasma to start automatically when logging in from tty 1, by adding this to your .bashrc:
-  ```
-  if [[ $(tty) == "/dev/tty1" ]]; then
-      dbus-run-session startplasma-wayland
-  fi
-  ```
-  
-- have tty1 automatically try to login your user and ask for password on boot:
-  ```
-  mkdir -p /etc/systemd/system/getty@tty1.service.d/
-  cat <<EOF > /etc/systemd/system/getty@tty1.service.d/autologin.conf
-  [Service]
-  ExecStart=
-  ExecStart=-/sbin/agetty -o '-p -- <USER>' --noclear --skip-login - $TERM
-  Environment=XDG_SESSION_TYPE=wayland
-  EOF
-  ```
-  should work automatically on next reboot
+- if reboots are working ok, remove ability for dracut to drop to root shell in case of failed boot by adding `panic=0` to the kernel cmdline
