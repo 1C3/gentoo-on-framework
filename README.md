@@ -12,7 +12,9 @@
 
 ### disk setup
 
-- change the ssds reported logical block size to 4KiB if possibile (https://wiki.archlinux.org/title/Advanced_Format#NVMe_solid_state_drives)
+- change the nvme drive reported logical block size to 4KiB if possibile (requires nvme-cli command):
+  - check available lba formats with `nvme id-ns -H /dev/nvme0n1 | grep '^LBA Format'`
+  - select the preferred format `nvme format --lbaf=<N> /dev/nvme0n1`
 
 - use whatever partitioning tool you prefer to:
   - format the disk as GPT
